@@ -6,6 +6,7 @@ const EmployeeActivity = require('../models/EmployeeActivity');
 const ScreenCapture = require('../models/ScreenCapture');
 const MonitoringAlert = require('../models/MonitoringAlert');
 const WebsiteWhitelist = require('../models/WebsiteWhitelist');
+const WorkSession = require('../models/WorkSession');
 const activityTracker = require('../services/activityTracker');
 const screenCaptureService = require('../services/screenCapture');
 const websiteMonitor = require('../services/websiteMonitor');
@@ -16,6 +17,7 @@ const { KeystrokeAnalyticsService } = require('../services/keystrokeAnalytics');
 const reportGenerator = require('../services/reportGenerator');
 const fs = require('fs').promises;
 const { getViolationScreenshots, generateOptimizedScreenshotUrl } = require('../utils/cloudinary');
+const clientMonitoringHandler = require('../services/clientMonitoringHandler');
 
 // Start monitoring session for an employee
 router.post('/start/:employeeId', async (req, res) => {
@@ -23,6 +25,16 @@ router.post('/start/:employeeId', async (req, res) => {
     const { employeeId } = req.params;
     const { workHours, intelligentMode = true } = req.body;
     const sessionId = `session_${employeeId}_${Date.now()}`;
+
+    // Check if client monitoring is already active
+    const clientSessions = clientMonitoringHandler.getActiveSessions();
+    const hasClientMonitoring = clientSessions.some(s => s.employeeId === employeeId);
+
+    if (hasClientMonitoring) {
+      console.log(`✅ Client monitoring already active for employee ${employeeId}, server-side monitoring will be minimal`);
+    } else {
+      console.log(`🖥️ Starting server-side monitoring for employee ${employeeId} (client monitoring not detected)`);
+    }
 
     // Start monitoring services based on mode
     if (intelligentMode) {
@@ -1157,6 +1169,287 @@ router.post('/work-session/end', async (req, res) => {
   } catch (error) {
     console.error('Error ending work session:', error);
     res.status(500).json({ error: 'Failed to end work session' });
+  }
+});
+
+// Get client monitoring status
+router.get('/client-monitoring/status', async (req, res) => {
+  try {
+    const activeSessions = clientMonitoringHandler.getActiveSessions();
+    const statistics = clientMonitoringHandler.getStatistics();
+
+    res.json({
+      success: true,
+      activeSessions,
+      statistics,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching client monitoring status:', error);
+    res.status(500).json({ error: 'Failed to fetch client monitoring status' });
+  }
+});
+
+// Send monitoring request to specific employee
+router.post('/client-monitoring/request/:employeeId', async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { action, ...data } = req.body;
+
+    const success = clientMonitoringHandler.sendMonitoringRequest(employeeId, action, data);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: `Monitoring request sent to employee ${employeeId}`,
+        action
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: `Employee ${employeeId} not connected or monitoring not active`
+      });
+    }
+  } catch (error) {
+    console.error('Error sending monitoring request:', error);
+    res.status(500).json({ error: 'Failed to send monitoring request' });
+  }
+});
+
+// Get client monitoring session details for specific employee
+router.get('/client-monitoring/session/:employeeId', async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const activeSessions = clientMonitoringHandler.getActiveSessions();
+
+    const session = activeSessions.find(s => s.employeeId === employeeId);
+
+    if (session) {
+      res.json({
+        success: true,
+        session,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: `No active monitoring session found for employee ${employeeId}`
+      });
+    }
+  } catch (error) {
+    console.error('Error fetching client monitoring session:', error);
+    res.status(500).json({ error: 'Failed to fetch client monitoring session' });
+  }
+});
+
+// 🗑️ CLEANUP ENDPOINT - Delete all monitoring data (NO AUTH REQUIRED)
+router.delete('/cleanup/all', async (req, res) => {
+  try {
+    console.log('🧹 Starting comprehensive monitoring data cleanup...');
+
+    const results = {
+      employeeActivities: 0,
+      screenCaptures: 0,
+      monitoringAlerts: 0,
+      workSessions: 0,
+      errors: []
+    };
+
+    // 1. Delete all Employee Activities
+    try {
+      const activityResult = await EmployeeActivity.deleteMany({});
+      results.employeeActivities = activityResult.deletedCount;
+      console.log(`✅ Deleted ${results.employeeActivities} employee activities`);
+    } catch (error) {
+      console.error('❌ Error deleting employee activities:', error);
+      results.errors.push(`Employee Activities: ${error.message}`);
+    }
+
+    // 2. Delete all Screen Captures
+    try {
+      const screenshotResult = await ScreenCapture.deleteMany({});
+      results.screenCaptures = screenshotResult.deletedCount;
+      console.log(`✅ Deleted ${results.screenCaptures} screen captures`);
+    } catch (error) {
+      console.error('❌ Error deleting screen captures:', error);
+      results.errors.push(`Screen Captures: ${error.message}`);
+    }
+
+    // 3. Delete all Monitoring Alerts
+    try {
+      const alertResult = await MonitoringAlert.deleteMany({});
+      results.monitoringAlerts = alertResult.deletedCount;
+      console.log(`✅ Deleted ${results.monitoringAlerts} monitoring alerts`);
+    } catch (error) {
+      console.error('❌ Error deleting monitoring alerts:', error);
+      results.errors.push(`Monitoring Alerts: ${error.message}`);
+    }
+
+    // 4. Delete all Work Sessions (monitoring-related)
+    try {
+      const sessionResult = await WorkSession.deleteMany({});
+      results.workSessions = sessionResult.deletedCount;
+      console.log(`✅ Deleted ${results.workSessions} work sessions`);
+    } catch (error) {
+      console.error('❌ Error deleting work sessions:', error);
+      results.errors.push(`Work Sessions: ${error.message}`);
+    }
+
+    // 5. Clear in-memory monitoring data
+    try {
+      // Clear client monitoring handler data
+      if (clientMonitoringHandler && typeof clientMonitoringHandler.cleanup === 'function') {
+        clientMonitoringHandler.cleanup();
+        console.log('✅ Cleared client monitoring handler data');
+      }
+
+      // Clear website monitor data
+      if (websiteMonitor && typeof websiteMonitor.stopAllMonitoring === 'function') {
+        websiteMonitor.stopAllMonitoring();
+        console.log('✅ Cleared website monitor data');
+      }
+
+      // Clear activity tracker data
+      if (activityTracker && typeof activityTracker.stopAllTracking === 'function') {
+        activityTracker.stopAllTracking();
+        console.log('✅ Cleared activity tracker data');
+      }
+    } catch (error) {
+      console.error('❌ Error clearing in-memory data:', error);
+      results.errors.push(`In-memory cleanup: ${error.message}`);
+    }
+
+    const totalDeleted = results.employeeActivities + results.screenCaptures + results.monitoringAlerts + results.workSessions;
+
+    console.log(`🎉 Cleanup completed! Total records deleted: ${totalDeleted}`);
+
+    res.json({
+      success: true,
+      message: 'All monitoring data has been successfully deleted',
+      results: {
+        totalDeleted,
+        breakdown: {
+          employeeActivities: results.employeeActivities,
+          screenCaptures: results.screenCaptures,
+          monitoringAlerts: results.monitoringAlerts,
+          workSessions: results.workSessions
+        },
+        errors: results.errors,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Critical error during cleanup:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cleanup monitoring data',
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🗑️ CLEANUP ENDPOINT - Delete monitoring data for specific employee (NO AUTH REQUIRED)
+router.delete('/cleanup/employee/:employeeId', async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    console.log(`🧹 Starting monitoring data cleanup for employee ${employeeId}...`);
+
+    const results = {
+      employeeActivities: 0,
+      screenCaptures: 0,
+      monitoringAlerts: 0,
+      workSessions: 0,
+      errors: []
+    };
+
+    // 1. Delete Employee Activities for specific employee
+    try {
+      const activityResult = await EmployeeActivity.deleteMany({ employee: employeeId });
+      results.employeeActivities = activityResult.deletedCount;
+      console.log(`✅ Deleted ${results.employeeActivities} employee activities for ${employeeId}`);
+    } catch (error) {
+      console.error('❌ Error deleting employee activities:', error);
+      results.errors.push(`Employee Activities: ${error.message}`);
+    }
+
+    // 2. Delete Screen Captures for specific employee
+    try {
+      const screenshotResult = await ScreenCapture.deleteMany({ employee: employeeId });
+      results.screenCaptures = screenshotResult.deletedCount;
+      console.log(`✅ Deleted ${results.screenCaptures} screen captures for ${employeeId}`);
+    } catch (error) {
+      console.error('❌ Error deleting screen captures:', error);
+      results.errors.push(`Screen Captures: ${error.message}`);
+    }
+
+    // 3. Delete Monitoring Alerts for specific employee
+    try {
+      const alertResult = await MonitoringAlert.deleteMany({ employee: employeeId });
+      results.monitoringAlerts = alertResult.deletedCount;
+      console.log(`✅ Deleted ${results.monitoringAlerts} monitoring alerts for ${employeeId}`);
+    } catch (error) {
+      console.error('❌ Error deleting monitoring alerts:', error);
+      results.errors.push(`Monitoring Alerts: ${error.message}`);
+    }
+
+    // 4. Delete Work Sessions for specific employee
+    try {
+      const sessionResult = await WorkSession.deleteMany({ employee: employeeId });
+      results.workSessions = sessionResult.deletedCount;
+      console.log(`✅ Deleted ${results.workSessions} work sessions for ${employeeId}`);
+    } catch (error) {
+      console.error('❌ Error deleting work sessions:', error);
+      results.errors.push(`Work Sessions: ${error.message}`);
+    }
+
+    // 5. Clear in-memory monitoring data for specific employee
+    try {
+      // Stop monitoring for this employee
+      if (websiteMonitor && typeof websiteMonitor.stopMonitoring === 'function') {
+        websiteMonitor.stopMonitoring(employeeId);
+        console.log(`✅ Stopped website monitoring for ${employeeId}`);
+      }
+
+      if (activityTracker && typeof activityTracker.stopTracking === 'function') {
+        activityTracker.stopTracking(employeeId);
+        console.log(`✅ Stopped activity tracking for ${employeeId}`);
+      }
+    } catch (error) {
+      console.error('❌ Error clearing in-memory data:', error);
+      results.errors.push(`In-memory cleanup: ${error.message}`);
+    }
+
+    const totalDeleted = results.employeeActivities + results.screenCaptures + results.monitoringAlerts + results.workSessions;
+
+    console.log(`🎉 Cleanup completed for employee ${employeeId}! Total records deleted: ${totalDeleted}`);
+
+    res.json({
+      success: true,
+      message: `All monitoring data for employee ${employeeId} has been successfully deleted`,
+      employeeId,
+      results: {
+        totalDeleted,
+        breakdown: {
+          employeeActivities: results.employeeActivities,
+          screenCaptures: results.screenCaptures,
+          monitoringAlerts: results.monitoringAlerts,
+          workSessions: results.workSessions
+        },
+        errors: results.errors,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Critical error during employee cleanup:', error);
+    res.status(500).json({
+      success: false,
+      error: `Failed to cleanup monitoring data for employee ${req.params.employeeId}`,
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

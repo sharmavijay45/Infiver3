@@ -32,6 +32,7 @@ import { API_URL } from "./lib/api";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { ClientMonitoringProvider } from "./components/monitoring/ClientMonitoringProvider";
 
 function App() {
   const user = JSON.parse(localStorage.getItem("WorkflowUser") || "{}");
@@ -39,7 +40,7 @@ function App() {
 
   const [recentReviews, setRecentReviews] = useState([]);
   const [hasNewReviews, setHasNewReviews] = useState(false);
-  const { subscribe } = usePushNotifications()
+  const { subscribe } = usePushNotifications();
 
   useEffect(() => {
     // Auto-subscribe to push notifications if user is logged in
@@ -103,13 +104,14 @@ function App() {
         <AuthProvider>
           <WorkspaceProvider>
             <SocketProvider>
-              <SidebarProvider>
-                <DashboardProvider
-                  recentReviews={recentReviews}
-                  hasNewReviews={hasNewReviews}
-                  markReviewsAsSeen={markReviewsAsSeen}
-                >
-                  <Routes>
+              <ClientMonitoringProvider>
+                <SidebarProvider>
+                  <DashboardProvider
+                    recentReviews={recentReviews}
+                    hasNewReviews={hasNewReviews}
+                    markReviewsAsSeen={markReviewsAsSeen}
+                  >
+                    <Routes>
                     {/* Public Routes */}
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
@@ -272,10 +274,11 @@ function App() {
                     </Route>
                      
                    
-                  </Routes>
-                  <Toaster />
-                </DashboardProvider>
-              </SidebarProvider>
+                    </Routes>
+                    <Toaster />
+                  </DashboardProvider>
+                </SidebarProvider>
+              </ClientMonitoringProvider>
             </SocketProvider>
           </WorkspaceProvider>
         </AuthProvider>

@@ -17,6 +17,7 @@ class WebsiteMonitor {
 
     this.activeSessions = new Map();
     this.urlHistory = new Map(); // Track URL history per employee
+    this.clientMonitoringHandler = null; // Will be set by the server
     this.suspiciousPatterns = [
       /facebook\.com/i,
       /twitter\.com/i,
@@ -61,6 +62,14 @@ class WebsiteMonitor {
   }
 
   /**
+   * Set the client monitoring handler reference
+   */
+  setClientMonitoringHandler(handler) {
+    this.clientMonitoringHandler = handler;
+    console.log('🔗 Client monitoring handler reference set in WebsiteMonitor');
+  }
+
+  /**
    * Start website monitoring for an employee
    */
   startMonitoring(employeeId, sessionId) {
@@ -88,6 +97,17 @@ class WebsiteMonitor {
     // Set up monitoring interval with performance optimization
     sessionData.intervalId = setInterval(async () => {
       try {
+        // Check if client monitoring is active for this employee
+        if (this.clientMonitoringHandler) {
+          const activeSessions = this.clientMonitoringHandler.getActiveSessions();
+          const hasClientMonitoring = activeSessions.some(s => s.employeeId === employeeId);
+
+          if (hasClientMonitoring) {
+            console.log(`🔄 Client monitoring active for employee ${employeeId}, skipping server-side detection`);
+            return;
+          }
+        }
+
         await this.checkCurrentActivity(sessionData);
       } catch (error) {
         console.error(`Website monitoring error for employee ${employeeId}:`, error);

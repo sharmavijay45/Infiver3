@@ -79,6 +79,16 @@ class IntelligentScreenCaptureService {
 
     session.lastActivity = new Date();
 
+    // Check if client monitoring is handling this employee
+    const clientMonitoringHandler = require('./clientMonitoringHandler');
+    const activeSessions = clientMonitoringHandler.getActiveSessions();
+    const hasClientMonitoring = activeSessions.some(s => s.employeeId === employeeId);
+
+    if (hasClientMonitoring) {
+      console.log(`🔄 Client monitoring active for employee ${employeeId}, delegating to client-side monitoring`);
+      return;
+    }
+
     // Check if the application/website is whitelisted
     const whitelistResult = await this.checkWhitelistStatus(employeeId, applicationData);
     

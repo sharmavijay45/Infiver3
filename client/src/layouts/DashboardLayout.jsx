@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Outlet } from "react-router-dom"
 import { DashboardSidebar } from "../components/dashboard/sidebar"
 import { DashboardHeader } from "../components/dashboard/header"
+import { CompactMonitoringIndicator } from "../components/monitoring/MonitoringStatusIndicator"
 
 export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -55,6 +56,15 @@ export function DashboardLayout() {
       <div className="md:ml-80 pt-18">
         <main className="main-content-scroll scrollbar-thin p-4 md:p-6 lg:p-10 pr-2 md:pr-4 lg:pr-6">
           <div className="max-w-8xl mx-auto animate-fade-in">
+            {/* Monitoring Status Indicator for Employees */}
+            {(() => {
+              const user = JSON.parse(localStorage.getItem("WorkflowUser") || "{}");
+              return user?.role !== 'Admin' && (
+                <div className="mb-4">
+                  <CompactMonitoringIndicator />
+                </div>
+              );
+            })()}
             <Outlet />
           </div>
         </main>

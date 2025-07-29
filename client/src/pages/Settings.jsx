@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { ProfileSettings } from "../components/settings/profile-settings"
 import { WorkspaceSettings } from "../components/settings/workspace-settings"
 import { NotificationSettings } from "../components/settings/notification-settings"
+import { PrivacySettings } from "../components/monitoring/PrivacySettings"
 
 function Settings() {
   return (
@@ -19,10 +20,11 @@ function Settings() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="workspace">Workspace</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
+              <TabsTrigger value="privacy">Privacy</TabsTrigger>
             </TabsList>
             <TabsContent value="profile">
               <ProfileSettings />
@@ -32,6 +34,9 @@ function Settings() {
             </TabsContent>
             <TabsContent value="notifications">
               <NotificationSettings />
+            </TabsContent>
+            <TabsContent value="privacy">
+              <PrivacySettings />
             </TabsContent>
           </Tabs>
         </CardContent>

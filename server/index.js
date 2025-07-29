@@ -145,6 +145,8 @@ const progressRoutes = require('./routes/progress'); // Add this line
 const notificationRoutes = require('./routes/notifications'); // Add this line
 const aimRoutes = require('./routes/aim');
 const pushRoutes = require('./routes/push'); // Add this line
+const clientMonitoringHandler = require('./services/clientMonitoringHandler'); // Add client monitoring handler
+const websiteMonitor = require('./services/websiteMonitor'); // Add website monitor
 // const aiRoutePy = require('./routes/aiRoutePy')
 // Create Express app
 const app = express();
@@ -198,11 +200,20 @@ io.on("connection", (socket) => {
   });
 });
 
-// Make io available to routes
+// Initialize client monitoring handlers
+clientMonitoringHandler.initializeSocketHandlers(io);
+
+// Set up the connection between websiteMonitor and clientMonitoringHandler
+websiteMonitor.setClientMonitoringHandler(clientMonitoringHandler);
+
+// Make io available to routes and globally for client monitoring
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
+
+// Make io globally available for client monitoring handler
+global.io = io;
 
 app.get('/api/ping', (req, res) => {
   res.json({ message: 'Pong!' });
